@@ -53,13 +53,13 @@ alias std.string.CaseSensitive CaseSensitive;
 
 static import std.file;
 
-import gdk.Color, gdk.GC, gtk.Widget, gdk.Drawable, gtk.DrawingArea,
+import gdk.Color, gtk.Widget, gtk.DrawingArea, gdk.Event,
     gtk.MainWindow, gtk.Main, gdk.Window, gtk.Container, gtk.Window,
-    gdk.Pixbuf, gdk.Pixmap, gtkc.all, gtk.FileChooserDialog, gtk.Dialog,
+    gtk.Image, gdk.Pixbuf, gtk.FileChooserDialog, gtk.Dialog,
     gtk.FileFilter, gobject.ObjectG, cairo.Context, cairo.FontFace,
     gtkc.cairotypes, cairo.PdfSurface, cairo.SvgSurface,
     cairo.PostScriptSurface, cairo.Surface, cairo.ImageSurface,
-    gtk.FileSelection, gtk.MessageDialog, gtk.Menu, gtk.MenuItem,
+    gtk.MessageDialog, gtk.Menu, gtk.MenuItem,
     gtk.Entry, gtk.HBox, gtk.Label, gtk.FontSelectionDialog, gtk.RadioButton,
     gtk.HSeparator, gtk.CheckButton, gtk.SeparatorMenuItem, gtkc.gtk;
 
@@ -167,8 +167,7 @@ enum TextAlignment {
 // This calls the relevant lib's method of cleaning up the given object, if
 // any.
 void doneWith(T)(T garbage) {
-    static if(is(T : gdk.GC.GC) || is(T : gdk.Pixmap.Pixmap) ||
-              is(T : gdk.Pixbuf.Pixbuf)) {
+    static if(is(T : gdk.Pixbuf.Pixbuf) || is (T : gtk.Image.Image)) {
         // Most things seem to manage themselves fine, but these objects
         // leak like a seive.
         garbage.unref();
@@ -198,21 +197,21 @@ private:
     void saveImplPixmap
     (string filename, string type, double width, double height) {
         plot2kill.gtkwrapper.defaultInit();
-        int w = roundTo!int(width);
+        /+int w = roundTo!int(width);
         int h = roundTo!int(height);
 
-        auto pixmap = new Pixmap(null, w, h, 24);
-        scope(exit) doneWith(pixmap);
+        auto image = new Image(null, w, h, 24);
+        scope(exit) doneWith(image);
 
-        auto c = new Context(pixmap);
+        auto c = new Context(image);
         scope(exit) doneWith(c);
 
         this.drawTo(c, PlotRect(0, 0, w, h));
-        auto pixbuf = new Pixbuf(pixmap, 0, 0, w, h);
+        auto pixbuf = new Pixbuf(image, 0, 0, w, h);
         scope(exit) doneWith(pixbuf);
 
         int result = pixbuf.savev(filename, type, null, null);
-        enforce(result, "File not saved successfully.");
+        enforce(result, "File not saved successfully.");+/
     }
 
     void saveImplSurface
@@ -794,26 +793,33 @@ private class LegendSymbolDrawer : FigureBase {
 class FigureWidget : DrawingArea {
 private:
     FigureBase _figure;
+    Surface _surface;
 
 package:
     this(FigureBase fig) {
         super();
         this._figure = fig;
-        this.addOnExpose(&onDrawingExpose);
+        this.addOnDraw(&onDraw);
+        this.addOnSizeAllocate(&onSizeAllocate);
         this.setSizeRequest(fig.minWindowWidth, fig.minWindowHeight);
     }
 
-    bool onDrawingExpose(GdkEventExpose* event, Widget drawingArea) {
-        draw();
+    void onSizeAllocate(GtkAllocation* allocation, Widget widget) {
+        auto width = allocation.width;
+        auto height = allocation.height;
+        this._surface = ImageSurface.create(CairoFormat.ARGB32, width, height);
+        draw(width, height);
+    }
+
+    bool onDraw(Scoped!Context context, Widget drawingArea) {
+        context.setSourceSurface(this._surface, 0, 0);
+        context.paint();
         return true;
     }
 
     void draw(double w, double h) {
         enforce(getParent() !is null, this.classinfo.name);
-        auto context = new Context(getWindow());
-        scope(exit) doneWith(context);
-
-        figure.drawTo(context, w, h);
+        figure.drawTo(Context.create(this._surface), w, h);
     }
 
 public:
@@ -1489,8 +1495,8 @@ if(is(Base == gtk.Window.Window) || is(Base == gtk.MainWindow.MainWindow)) {
         }
 
         // Bring up menu on right click.
-        bool clickEvent(GdkEventButton* event, Widget widget) {
-            if(event.button != rightClick) {
+        bool clickEvent(Event event, Widget widget) {
+            if(event.button.button != rightClick) {
                 return false;
             }
 
@@ -1498,59 +1504,6 @@ if(is(Base == gtk.Window.Window) || is(Base == gtk.MainWindow.MainWindow)) {
                 gtk_get_current_event_time());
 
             return true;
-        }
-
-        // Use crappy deprecated file dialog to avoid DLL hell issues that
-        // occur in certain configurations (for example, mine).
-        // Specifically, if you have Win64 + Symantec Endpoint Protection +
-        // a mounted network drive and you launch from a Cygwin terminal,
-        // bringing up a save dialog will immediately cause an access
-        // violation.  This is apparently caused by SnacNp64.dll, a 64-bit
-        // DLL related to Symantec's network protection stuff, being loaded
-        // into 32-bit address space.
-        //
-        // This code is kinda quick and dirty in hope that it will be
-        // removed soon.  For example, it doesn't do overwrite
-        // confirmation, or filters.  If the extension isn't valid, it
-        // just defaults to a PNG.
-        void popupSaveDialogFallback(MenuItem menuItem) {
-            auto fc = new FileSelection("Save plot...");
-            fc.setSelectMultiple(0);
-            fc.addOnResponse(&saveDialogResponseFallback);
-
-            fc.run();
-        }
-
-        void saveDialogResponseFallback(int response, Dialog d) {
-            auto fc = cast(FileSelection) d;
-            assert(fc);
-
-            if(response != GtkResponseType.OK) {
-                d.destroy();
-                return;
-            }
-
-            auto names = fc.getSelections();
-            enforce(names.length == 1);
-            auto name = names[0];
-
-            auto ext = toLower(extensionNoDot(name));
-
-            string fileType;
-            if(isValidExt(ext)) {
-                fileType = ext;
-            } else {
-                fileType = "png";  // Default since we don't have filters.
-            }
-
-            try {
-                widget.figure.saveToFile
-                    (name, fileType, widget.getWidth, widget.getHeight);
-            } catch(Exception e) {
-                fileError(e.toString());
-            }
-
-            d.destroy();
         }
 
         void saveDialogResponse(int response, Dialog d) {
@@ -1585,8 +1538,7 @@ if(is(Base == gtk.Window.Window) || is(Base == gtk.MainWindow.MainWindow)) {
         }
 
         void popupSaveDialogImpl(MenuItem menuItem) {
-            auto fc = new FileChooserDialog("Save plot...", this,
-            GtkFileChooserAction.SAVE);
+            auto fc = new FileChooserDialog("Save plot...", this, GtkFileChooserAction.SAVE);
             fc.setDoOverwriteConfirmation(1);  // Why isn't this the default?
             fc.addOnResponse(&saveDialogResponse);
 
@@ -1601,14 +1553,7 @@ if(is(Base == gtk.Window.Window) || is(Base == gtk.MainWindow.MainWindow)) {
         }
 
         void popupSaveDialog(MenuItem menuItem) {
-            try {
-                popupSaveDialogImpl(menuItem);
-            } catch(Error e) {
-                // Catch access violation from improper DLL load and pray that
-                // it didn't horribly corrupt any memory.  See comments for
-                // popupSaveDialogFallback().
-                popupSaveDialogFallback(menuItem);
-            }
+            popupSaveDialogImpl(menuItem);
         }
 
     public:

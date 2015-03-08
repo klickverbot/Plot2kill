@@ -1,36 +1,15 @@
-Build Documentation
-==================
-```
-dmd -o- -Dddoc *.d
-```
-___
-Build Library
-=============
+Plot2Kill plotting library for D
+================================
 
-Just compile all of the .d files into a .lib (Windows) or .a (Posix) file.
-Build command for the GTK port:
-```
-dmd -lib -ofplot2kill.lib -O -inline -release *.d
-```
-If you're using DFL, add -version=dfl to the build command:
-```
-dmd -lib -ofplot2kill.lib -O -inline -release -version=dfl *.d
-```
-___
-Build Demo
-==========
+Plot2Kill was originally written by David Simcha and offers basic
+functionality for displaying and saving plots, biased towards statistical
+analysis.
 
-To build the demo/test module and compile an executable instead of a library, do:
-```
-dmd -O -inline -release -version=test *.d
-```
-or
-```
-dmd -O -inline -release -version=test -version=dfl *.d
-```
-___
+This fork has been updated to compile with recent GtkD versions and Dub.
+
+
 Licensing
-=========
+---------
 
 Plot2Kill is licensed under the Boost license. You may not be able to use it
 under such permissive terms if you link to a copylefted GUI library. For

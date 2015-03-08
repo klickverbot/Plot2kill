@@ -434,7 +434,7 @@ package class SubplotControl : FigureControl {
 
 } else {
 
-import gtk.DrawingArea, gdk.Drawable, gtk.Widget;
+import gdk.Event, gtk.DrawingArea, gtk.Widget;
 
 ///
 class Subplot : SubplotBase {
@@ -505,8 +505,9 @@ package class SubplotWidget : FigureWidget {
     }
 
     // Handles zooming in on double click.
-    bool zoomEvent(GdkEventButton* press, Widget widget) {
+    bool zoomEvent(Event event, Widget widget) {
         auto sp = subplot();
+        auto press = event.button;
 
         with(sp) {
             if(press.type != GdkEventType.DOUBLE_BUTTON_PRESS
