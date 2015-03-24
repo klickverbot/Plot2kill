@@ -5,7 +5,7 @@
 	"license": "BSL-1.0",
 	"authors": ["klickverbot"],
 	"dependencies": {
-		"gtk-d": "~>2.4.2"
+		"gtk-d": "~>3.0.0"
 	},
 	"targetType": "library"
 }
