@@ -1091,7 +1091,7 @@ class TickDialog(char xy) : Dialog {
         checkHbox.add(gridLineButton);
 
         auto intensLabel = new Label("Gridline Intensity (0-255)");
-        intensLabel.setJustify(GtkJustification.JUSTIFY_RIGHT);
+        intensLabel.setJustify(GtkJustification.RIGHT);
         checkHbox.add(intensLabel);
 
         gridEntry = new Entry();
